@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/client/api";
+import { feedsQuery, updateFeedsCache } from "@/lib/client/query";
 import type { RssFeed } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,76 +24,132 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function RssPanel() {
-  const [feeds, setFeeds] = useState<RssFeed[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const feeds = useQuery(feedsQuery());
+
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<RssFeed | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editUrl, setEditUrl] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-    api<RssFeed[]>("/api/v1/feeds")
-      .then((data) => {
-        if (!cancelled) setFeeds(data);
-      })
-      .catch((error) => {
-        if (!cancelled) toast.error(error instanceof ApiError ? error.message : "加载失败");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const list = feeds.data ?? [];
+  const loading = feeds.isPending;
 
-  async function addFeed(event: React.FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
+  const createMutation = useMutation({
+    mutationFn: async (input: { title: string; url: string }) => {
       const validated = await api<{ title: string }>("/api/v1/feeds/validate", {
         method: "POST",
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url: input.url }),
       });
-      const created = await api<RssFeed>("/api/v1/feeds", {
+      return api<RssFeed>("/api/v1/feeds", {
         method: "POST",
         body: JSON.stringify({
-          title: title || validated.title,
-          url,
+          title: input.title || validated.title,
+          url: input.url,
           enabled: true,
         }),
       });
-      setFeeds((current) => [created, ...current]);
+    },
+    onSuccess: (created) => {
+      updateFeedsCache(queryClient, (current) => [created, ...current]);
       setTitle("");
       setUrl("");
       toast.success("已添加 RSS 源");
-    } catch (error) {
+    },
+    onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : "添加失败");
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+  });
 
-  async function toggle(feed: RssFeed, enabled: boolean) {
-    try {
-      const updated = await api<RssFeed>(`/api/v1/feeds/${feed.id}`, {
+  const toggleMutation = useMutation({
+    mutationFn: (feed: RssFeed) =>
+      api<RssFeed>(`/api/v1/feeds/${feed.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ enabled }),
-      });
-      setFeeds((current) => current.map((item) => (item.id === feed.id ? updated : item)));
-    } catch (error) {
+        body: JSON.stringify({ enabled: !feed.enabled }),
+      }),
+    onSuccess: (updated) => {
+      updateFeedsCache(queryClient, (current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    },
+    onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : "更新失败");
-    }
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (feed: RssFeed) =>
+      api<{ id: string }>(`/api/v1/feeds/${feed.id}`, { method: "DELETE" }),
+    onSuccess: (_data, feed) => {
+      updateFeedsCache(queryClient, (current) =>
+        current.filter((item) => item.id !== feed.id),
+      );
+      toast.success("已删除");
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError ? error.message : "删除失败");
+    },
+  });
+
+  const saveEditMutation = useMutation({
+    mutationFn: async (input: { feed: RssFeed; title: string; url: string }) => {
+      let nextTitle = input.title.trim();
+      if (input.url !== input.feed.url) {
+        const validated = await api<{ title: string }>("/api/v1/feeds/validate", {
+          method: "POST",
+          body: JSON.stringify({ url: input.url }),
+        });
+        if (!nextTitle) nextTitle = validated.title;
+      }
+      if (!nextTitle) nextTitle = input.feed.title;
+
+      return api<RssFeed>(`/api/v1/feeds/${input.feed.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: nextTitle, url: input.url }),
+      });
+    },
+    onSuccess: (updated) => {
+      updateFeedsCache(queryClient, (current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      closeEdit();
+      toast.success("已更新 RSS 源");
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError ? error.message : "保存失败");
+    },
+  });
+
+  function addFeed(event: React.FormEvent) {
+    event.preventDefault();
+    createMutation.mutate({ title: title.trim(), url: url.trim() });
   }
 
-  async function remove(feed: RssFeed) {
-    try {
-      await api(`/api/v1/feeds/${feed.id}`, { method: "DELETE" });
-      setFeeds((current) => current.filter((item) => item.id !== feed.id));
-      toast.success("已删除");
-    } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "删除失败");
-    }
+  function toggle(feed: RssFeed) {
+    toggleMutation.mutate(feed);
+  }
+
+  function openEdit(feed: RssFeed) {
+    setEditing(feed);
+    setEditTitle(feed.title);
+    setEditUrl(feed.url);
+  }
+
+  function closeEdit() {
+    setEditing(null);
+    setEditTitle("");
+    setEditUrl("");
+  }
+
+  function saveEdit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editing) return;
+    saveEditMutation.mutate({
+      feed: editing,
+      title: editTitle,
+      url: editUrl.trim(),
+    });
   }
 
   return (
@@ -116,9 +182,13 @@ export function RssPanel() {
               />
             </div>
             <div className="flex items-end">
-              <Button type="submit" disabled={saving} className="w-full bg-brand-gradient text-white md:w-auto">
+              <Button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="w-full bg-brand-gradient text-white md:w-auto"
+              >
                 <Plus />
-                {saving ? "校验中..." : "添加"}
+                {createMutation.isPending ? "校验中..." : "添加"}
               </Button>
             </div>
           </form>
@@ -137,10 +207,10 @@ export function RssPanel() {
               <Skeleton className="h-16 rounded-xl" />
             </>
           )}
-          {!loading && feeds.length === 0 && (
+          {!loading && list.length === 0 && (
             <p className="text-sm text-muted-foreground">还没有 RSS 源。先添加一个新闻或博客订阅。</p>
           )}
-          {feeds.map((feed) => (
+          {list.map((feed) => (
             <div
               key={feed.id}
               className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 md:flex-row md:items-center md:justify-between"
@@ -161,25 +231,91 @@ export function RssPanel() {
                 <div className="flex items-center gap-2">
                   <Switch
                     checked={feed.enabled}
-                    onCheckedChange={(checked) => toggle(feed, checked)}
+                    disabled={
+                      toggleMutation.isPending && toggleMutation.variables?.id === feed.id
+                    }
+                    onCheckedChange={() => toggle(feed)}
                     aria-label={`启用 ${feed.title}`}
                   />
                   <span className="text-xs text-muted-foreground">启用</span>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`删除 ${feed.title}`}
-                  onClick={() => remove(feed)}
-                >
-                  <Trash2 />
-                </Button>
+                <div className="flex items-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`编辑 ${feed.title}`}
+                    onClick={() => openEdit(feed)}
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`删除 ${feed.title}`}
+                    disabled={
+                      removeMutation.isPending && removeMutation.variables?.id === feed.id
+                    }
+                    onClick={() => removeMutation.mutate(feed)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
         </CardContent>
       </Card>
+
+      <Dialog open={editing !== null} onOpenChange={(open) => (open ? undefined : closeEdit())}>
+        <DialogContent>
+          <form className="grid gap-4" onSubmit={saveEdit}>
+            <DialogHeader>
+              <DialogTitle>编辑 RSS 源</DialogTitle>
+              <DialogDescription>
+                修改名称或地址。地址变化时会先校验，确认可解析后再保存。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-feed-title">名称</Label>
+              <Input
+                id="edit-feed-title"
+                value={editTitle}
+                onChange={(event) => setEditTitle(event.target.value)}
+                placeholder="留空则使用源标题"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-feed-url">RSS / Atom URL</Label>
+              <Input
+                id="edit-feed-url"
+                type="url"
+                required
+                value={editUrl}
+                onChange={(event) => setEditUrl(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeEdit}
+                disabled={saveEditMutation.isPending}
+              >
+                取消
+              </Button>
+              <Button
+                type="submit"
+                disabled={saveEditMutation.isPending}
+                className="bg-brand-gradient text-white"
+              >
+                {saveEditMutation.isPending ? "保存中..." : "保存"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

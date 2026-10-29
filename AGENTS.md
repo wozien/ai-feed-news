@@ -1,4 +1,4 @@
-# Cat & News Agent 约定
+# AI Feed News Agent 约定
 
 后续改动必须遵守以下硬约束。产品是个人向「RSS → 大模型 → 每日 AI 简讯」工作台。
 
@@ -47,6 +47,7 @@
 - Toaster 只挂根 layout
 - 生成按钮必须有 loading / disabled，防止重复提交
 - 列表加载用 Skeleton；尊重 `prefers-reduced-motion`
+- 客户端取数统一走 TanStack Query（`src/lib/client/query.ts` 的 `queryKeys` / `*Query()`），**禁止新增 `useEffect + fetch` 取数**；写操作用 `useMutation` + `setQueryData` / `invalidateQueries` 更新缓存
 
 ## 生成规则
 

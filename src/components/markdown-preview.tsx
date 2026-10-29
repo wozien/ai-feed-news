@@ -2,14 +2,18 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { stripHiddenSections } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 
 export function MarkdownPreview({
   markdown,
   className,
+  stripLeadingHeading = false,
 }: {
   markdown: string;
   className?: string;
+  /** 当标题已由页面单独展示时，去掉 Markdown 开头的一级标题，避免重复。 */
+  stripLeadingHeading?: boolean;
 }) {
   if (!markdown.trim()) {
     return (
@@ -17,6 +21,11 @@ export function MarkdownPreview({
         生成后将在这里预览 Markdown 简讯。
       </p>
     );
+  }
+
+  let content = stripHiddenSections(markdown);
+  if (stripLeadingHeading) {
+    content = content.replace(/^\s*#\s+.*(?:\r?\n|$)/, "");
   }
 
   return (
@@ -41,7 +50,14 @@ export function MarkdownPreview({
           p: ({ children }) => <p className="mb-3 text-muted-foreground">{children}</p>,
           ul: ({ children }) => <ul className="mb-4 list-disc space-y-1.5 pl-5">{children}</ul>,
           ol: ({ children }) => <ol className="mb-4 list-decimal space-y-1.5 pl-5">{children}</ol>,
-          li: ({ children }) => <li className="leading-7">{children}</li>,
+          // 列表项之间有空行时，Markdown 会把内容包进 <p>（loose list）；
+          // 没有空行时则是裸文本（tight list）。统一颜色与间距，避免同一条简讯里
+          // 有的源是灰字、有的源是白字。
+          li: ({ children }) => (
+            <li className="leading-7 text-muted-foreground [&>p]:mb-0 [&>p]:text-inherit">
+              {children}
+            </li>
+          ),
           a: ({ href, children }) => (
             <a
               href={href}
@@ -62,7 +78,7 @@ export function MarkdownPreview({
           ),
         }}
       >
-        {markdown}
+        {content}
       </ReactMarkdown>
     </div>
   );

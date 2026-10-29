@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cat & News",
+  title: "AI Feed News",
   description: "从 RSS 源生成每日 AI 简讯",
 };
 

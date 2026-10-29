@@ -1,4 +1,4 @@
-# Cat & News 风格设计指南
+# AI Feed News 风格设计指南
 
 极简科技风：冷静、专业、智能。白色画布、深灰文字、蓝色渐变主色、圆角卡片、充足留白。
 
@@ -58,6 +58,7 @@
 - Focus ring 必须可见（`--ring`）
 - 主按钮使用 `.bg-brand-gradient`，loading 时 disabled 并改文案
 - 列表等待用 Skeleton，避免整页空白转圈
+- 只有首次加载（无缓存）才出 Skeleton；后台刷新一律静默，不复位已有内容
 - 表单：可见 label，错误贴近字段，提交后 toast 反馈
 - 可点击元素保持 `cursor-pointer`（由 Button 提供）
 

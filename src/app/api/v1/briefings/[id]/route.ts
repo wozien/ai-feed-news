@@ -23,3 +23,24 @@ export const GET = withHandler(async (_request, context) => {
 
   return ok(toBriefing(row));
 });
+
+export const DELETE = withHandler(async (_request, context) => {
+  const user = await requireUser();
+  const { id } = await context.params;
+
+  const [row] = await db
+    .select({ id: briefings.id })
+    .from(briefings)
+    .where(and(eq(briefings.id, id), eq(briefings.userId, user.id)))
+    .limit(1);
+
+  if (!row) {
+    throw new HttpError("NOT_FOUND", "简讯不存在", 404);
+  }
+
+  await db
+    .delete(briefings)
+    .where(and(eq(briefings.id, id), eq(briefings.userId, user.id)));
+
+  return ok({ id });
+});

@@ -4,7 +4,7 @@ const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BODY_BYTES = 2_000_000;
 const MAX_ITEMS_PER_FEED = 12;
 const LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const USER_AGENT = "CatAndNews/1.0 (+https://github.com/cat-and-news)";
+const USER_AGENT = "AiFeedNews/1.0 (+https://github.com/ai-feed-news)";
 
 export type ParsedFeedItem = {
   title: string;

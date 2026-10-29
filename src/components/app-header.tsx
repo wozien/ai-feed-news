@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { getAppNavTitle } from "@/lib/app-nav";
 import { LogOut } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,11 +18,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function AppHeader({ title }: { title: string }) {
+export function AppHeader() {
+  const pathname = usePathname();
+  const title = getAppNavTitle(pathname);
   const router = useRouter();
   const { data: session } = authClient.useSession();
   const user = session?.user;
-  const initial = user?.name?.slice(0, 1).toUpperCase() || "C";
+  const initial = user?.name?.slice(0, 1).toUpperCase() || "U";
 
   async function signOut() {
     await authClient.signOut();

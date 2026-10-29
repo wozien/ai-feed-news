@@ -36,6 +36,7 @@ export const llmUpdateSchema = z.object({
 
 export const briefingGenerateSchema = z.object({
   feedIds: z.array(z.string().min(1)).max(10).optional(),
+  profileId: z.string().min(1).optional(),
 });
 
 export const briefingSaveSchema = z.object({

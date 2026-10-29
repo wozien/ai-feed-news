@@ -2,15 +2,29 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, Sparkles } from "lucide-react";
 import { api, ApiError } from "@/lib/client/api";
-import type { Briefing, GeneratedBriefing, LlmProfile, RssFeed } from "@/lib/types";
+import {
+  briefingDetailQuery,
+  feedsQuery,
+  llmProfilesQuery,
+  queryKeys,
+} from "@/lib/client/query";
+import type { Briefing, GeneratedBriefing } from "@/lib/types";
 import { MarkdownPreview } from "@/components/markdown-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function todayLocal() {
@@ -22,69 +36,68 @@ function todayLocal() {
 
 export function GeneratePanel() {
   const router = useRouter();
-  const [feeds, setFeeds] = useState<RssFeed[]>([]);
-  const [profiles, setProfiles] = useState<LlmProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<GeneratedBriefing | null>(null);
+  const queryClient = useQueryClient();
 
-  const enabledFeeds = useMemo(() => feeds.filter((feed) => feed.enabled), [feeds]);
-  const defaultProfile = profiles.find((profile) => profile.isDefault);
+  const feeds = useQuery(feedsQuery());
+  const profiles = useQuery(llmProfilesQuery());
 
-  useEffect(() => {
-    Promise.all([
-      api<RssFeed[]>("/api/v1/feeds"),
-      api<LlmProfile[]>("/api/v1/llm-profiles"),
-    ])
-      .then(([nextFeeds, nextProfiles]) => {
-        setFeeds(nextFeeds);
-        setProfiles(nextProfiles);
-      })
-      .catch((error) => toast.error(error instanceof ApiError ? error.message : "加载失败"))
-      .finally(() => setLoading(false));
-  }, []);
+  const enabledFeeds = useMemo(
+    () => (feeds.data ?? []).filter((feed) => feed.enabled),
+    [feeds.data],
+  );
+  const profileList = profiles.data ?? [];
 
-  async function generate() {
-    setGenerating(true);
-    try {
-      const data = await api<GeneratedBriefing>("/api/v1/briefings/generate", {
+  // 默认档案直接派生，避免数据晚到导致的中间空态
+  const [draftProfileId, setDraftProfileId] = useState<string | null>(null);
+  const defaultProfile =
+    profileList.find((profile) => profile.isDefault) ?? profileList[0];
+  const draftExists = profileList.some((profile) => profile.id === draftProfileId);
+  const profileId = draftExists ? (draftProfileId ?? "") : (defaultProfile?.id ?? "");
+  const selectedProfile = profileList.find((profile) => profile.id === profileId);
+
+  const generateMutation = useMutation({
+    mutationFn: () =>
+      api<GeneratedBriefing>("/api/v1/briefings/generate", {
         method: "POST",
         body: JSON.stringify({
           feedIds: enabledFeeds.slice(0, 10).map((feed) => feed.id),
+          ...(profileId ? { profileId } : {}),
         }),
-      });
-      setResult(data);
+      }),
+    onSuccess: () => {
       toast.success("简讯已生成，可预览后保存");
-    } catch (error) {
+    },
+    onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : "生成失败");
-    } finally {
-      setGenerating(false);
-    }
-  }
+    },
+  });
 
-  async function save() {
-    if (!result) return;
-    setSaving(true);
-    try {
-      const saved = await api<Briefing>("/api/v1/briefings", {
+  const saveMutation = useMutation({
+    mutationFn: (generated: GeneratedBriefing) =>
+      api<Briefing>("/api/v1/briefings", {
         method: "POST",
         body: JSON.stringify({
-          title: result.title,
-          markdown: result.markdown,
+          title: generated.title,
+          markdown: generated.markdown,
           date: todayLocal(),
-          sourceFeedIds: result.sourceFeedIds,
-          modelUsed: result.modelUsed,
+          sourceFeedIds: generated.sourceFeedIds,
+          modelUsed: generated.modelUsed,
         }),
-      });
+      }),
+    onSuccess: (saved) => {
+      // 详情页直接命中缓存，历史列表后台静默刷新
+      queryClient.setQueryData(briefingDetailQuery(saved.id).queryKey, saved);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.briefingLists });
       toast.success("已保存到历史简讯");
       router.push(`/briefings/${saved.id}`);
-    } catch (error) {
+    },
+    onError: (error) => {
       toast.error(error instanceof ApiError ? error.message : "保存失败");
-    } finally {
-      setSaving(false);
-    }
-  }
+    },
+  });
+
+  const loading = feeds.isPending || profiles.isPending;
+  const result = generateMutation.data ?? null;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -92,7 +105,7 @@ export function GeneratePanel() {
         <CardHeader>
           <CardTitle>一键生成</CardTitle>
           <CardDescription>
-            拉取已启用 RSS 的近 24 小时条目，交给默认大模型整理成 Markdown。
+            拉取已启用 RSS 的近 24 小时条目，交给所选大模型整理成 Markdown。更新频率低的源条目会偏少。
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
@@ -104,11 +117,39 @@ export function GeneratePanel() {
           ) : (
             <>
               <div className="rounded-xl border bg-muted/40 px-4 py-3">
-                <p className="text-xs text-muted-foreground">默认模型</p>
-                {defaultProfile ? (
-                  <p className="mt-1 text-sm font-medium">
-                    {defaultProfile.name} · {defaultProfile.model}
-                  </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">使用模型</p>
+                  {selectedProfile && !selectedProfile.isDefault && (
+                    <span className="text-xs text-muted-foreground">非默认档案</span>
+                  )}
+                </div>
+                {profileList.length > 0 ? (
+                  <Select
+                    value={profileId}
+                    onValueChange={(value) => {
+                      if (value) setDraftProfileId(value);
+                    }}
+                    items={profileList.map((profile) => ({
+                      value: profile.id,
+                      label: `${profile.name} · ${profile.model}`,
+                    }))}
+                  >
+                    <SelectTrigger
+                      id="generate-profile"
+                      aria-label="选择生成简讯使用的大模型"
+                      className="mt-2 w-full bg-background"
+                    >
+                      <SelectValue placeholder="选择模型档案" />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      {profileList.map((profile) => (
+                        <SelectItem key={profile.id} value={profile.id}>
+                          {profile.name} · {profile.model}
+                          {profile.isDefault ? "（默认）" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <p className="mt-1 text-sm">
                     尚未配置。请先到{" "}
@@ -141,31 +182,40 @@ export function GeneratePanel() {
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
-                  disabled={generating || !defaultProfile || enabledFeeds.length === 0}
-                  onClick={generate}
+                  disabled={generateMutation.isPending || !selectedProfile || enabledFeeds.length === 0}
+                  onClick={() => generateMutation.mutate()}
                   className="bg-brand-gradient text-white hover:opacity-90"
                 >
                   <Sparkles />
-                  {generating ? "生成中..." : "生成今日简讯"}
+                  {generateMutation.isPending ? "生成中..." : "生成今日简讯"}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={!result || saving}
-                  onClick={save}
+                  disabled={!result || saveMutation.isPending}
+                  onClick={() => {
+                    if (result) saveMutation.mutate(result);
+                  }}
                 >
                   <Save />
-                  {saving ? "保存中..." : "保存简讯"}
+                  {saveMutation.isPending ? "保存中..." : "保存简讯"}
                 </Button>
               </div>
               {result && (
                 <div className="grid gap-2">
-                  <p className="text-xs text-muted-foreground">源抓取结果</p>
+                  <p className="text-xs text-muted-foreground">
+                    源抓取结果（只取近 24 小时，不足的源不补齐）
+                  </p>
                   {result.sources.map((source) => (
                     <p key={source.feedId} className="text-sm">
                       {source.title}：
                       {source.error ? (
                         <span className="text-destructive"> {source.error}</span>
+                      ) : source.itemCount <= 1 ? (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          近 24 小时仅 {source.itemCount} 条
+                        </span>
                       ) : (
                         <span> {source.itemCount} 条</span>
                       )}
@@ -181,12 +231,9 @@ export function GeneratePanel() {
       <Card className="min-h-[480px] rounded-2xl">
         <CardHeader>
           <CardTitle>Markdown 预览</CardTitle>
-          <CardDescription>
-            {result ? `${result.title} · ${result.modelUsed}` : "生成完成后在此阅读。"}
-          </CardDescription>
         </CardHeader>
         <CardContent>
-          {generating ? (
+          {generateMutation.isPending ? (
             <div className="grid gap-3">
               <Skeleton className="h-8 w-2/3" />
               <Skeleton className="h-4 w-full" />

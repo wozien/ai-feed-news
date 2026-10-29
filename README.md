@@ -1,4 +1,4 @@
-# Cat & News
+# AI Feed News
 
 从多个网站的 RSS / Atom 源拉取当日资讯，交给你配置的大模型，生成并保存每日 AI 简讯（Markdown）。
 

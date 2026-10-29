@@ -20,14 +20,31 @@ export const POST = withHandler(async (request) => {
   const user = await requireUser();
   const body = await parseJson(briefingGenerateSchema, request);
 
-  const [profile] = await db
-    .select()
-    .from(llmProfiles)
-    .where(and(eq(llmProfiles.userId, user.id), eq(llmProfiles.isDefault, true)))
-    .limit(1);
+  const [profile] = body.profileId
+    ? await db
+        .select()
+        .from(llmProfiles)
+        .where(
+          and(
+            eq(llmProfiles.userId, user.id),
+            eq(llmProfiles.id, body.profileId),
+          ),
+        )
+        .limit(1)
+    : await db
+        .select()
+        .from(llmProfiles)
+        .where(and(eq(llmProfiles.userId, user.id), eq(llmProfiles.isDefault, true)))
+        .limit(1);
 
   if (!profile) {
-    throw new HttpError("LLM_REQUIRED", "请先在个人中心配置并设为默认的大模型档案", 409);
+    throw new HttpError(
+      "LLM_REQUIRED",
+      body.profileId
+        ? "所选的大模型档案不存在"
+        : "请先在个人中心配置并设为默认的大模型档案",
+      body.profileId ? 404 : 409,
+    );
   }
 
   const ownedFeeds = await db

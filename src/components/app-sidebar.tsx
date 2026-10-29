@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, Settings2, Sparkles } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { appNavItems } from "@/lib/app-nav";
 import {
   Sidebar,
   SidebarContent,
@@ -15,12 +15,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-
-const items = [
-  { href: "/", label: "今日简讯", icon: Sparkles },
-  { href: "/briefings", label: "历史简讯", icon: History },
-  { href: "/settings", label: "个人中心", icon: Settings2 },
-];
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -35,7 +29,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>工作台</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => {
+              {appNavItems.map((item) => {
                 const active =
                   item.href === "/"
                     ? pathname === "/"

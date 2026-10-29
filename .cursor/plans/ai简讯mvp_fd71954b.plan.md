@@ -20,9 +20,9 @@ todos:
 isProject: false
 ---
 
-# Cat & News 最小闭环实施方案
+# AI Feed News 最小闭环实施方案
 
-产品定位：个人向「RSS → 大模型 → 每日 AI 简讯」工作台。仓库目录即项目根（[`/Users/james/Project/cat-and-news`](/Users/james/Project/cat-and-news)），当前几乎为空，按绿场初始化。
+产品定位：个人向「RSS → 大模型 → 每日 AI 简讯」工作台。仓库目录即项目根（[`/Users/james/Project/ai-feed-news`](/Users/james/Project/ai-feed-news)），当前几乎为空，按绿场初始化。
 
 ## 技术拍板
 
@@ -103,7 +103,7 @@ sequenceDiagram
 
 - 最多 10 个启用源、每源最多 12 条、只取近 24 小时
 - 超时 / UA / 体积上限；单源失败不阻断，结果里标注失败源
-- Prompt 固定产出：标题、今日要点、分源摘要、参考链接；禁止编造未提供的事实
+- Prompt 固定产出：标题 + 分源摘要，每条摘要末尾附原文链接；不输出今日要点与参考链接汇总；禁止编造未提供的事实
 - 无启用源或无默认模型时，API 返回可操作错误，前端引导去个人中心
 
 ## 认证与路由守卫
