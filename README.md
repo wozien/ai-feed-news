@@ -1,76 +1,42 @@
 # AI Feed News
 
-从多个网站的 RSS / Atom 源拉取当日资讯，交给你配置的大模型，生成并保存每日 AI 简讯（Markdown）。
+**English** · [中文](README.zh-CN.md)
 
-## 技术栈
+Turn scattered RSS feeds into one calm, readable daily briefing—summarized by the AI model you choose, previewed in Markdown, and saved when you are ready.
 
-- Next.js 16 App Router + Tailwind CSS v4 + shadcn/ui + lucide
-- REST Route Handlers（不使用 Server Actions）
-- Better Auth：邮箱密码，可选 GitHub / Google
-- Drizzle ORM + Neon PostgreSQL
+**Live app:** [ai-feed-news.vercel.app](https://ai-feed-news.vercel.app)
 
-## 环境要求
+![Daily briefing: generate from RSS sources and preview Markdown](docs/img/ai-feed-news-snapshot-01.png)
 
-- Node.js 22 LTS
-- pnpm 10+
-- Neon 项目（池化连接 + 直连）
+## What it is
 
-## 快速开始
+AI Feed News is a personal workspace for **RSS → AI → daily digest**. You connect the sites you already follow, pick a default model profile, and generate a structured briefing on demand. Nothing runs on a schedule unless you click generate; you always review before saving.
 
-```bash
-pnpm install
-cp .env.example .env.local
-```
+It is built for one person at a time: your feeds, your models, your history—no public feed directory or shared timeline.
 
-编辑 `.env.local`：
+## Who it is for
 
-```bash
-# 池化连接，给应用运行时
-DATABASE_URL=postgresql://...-pooler.../neondb?sslmode=require
-# 直连，给 drizzle-kit migrate
-DATABASE_URL_UNPOOLED=postgresql://.../neondb?sslmode=require
+- Readers who subscribe to many RSS/Atom sources and want **one place** to catch up
+- People who want **their own** LLM (OpenAI-compatible or Anthropic-style APIs) without a black-box news app
+- Anyone who prefers **Markdown output** they can skim, edit, or archive
 
-BETTER_AUTH_SECRET=$(openssl rand -base64 32)
-BETTER_AUTH_URL=http://localhost:3000
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-```
+## How to use
 
-GitHub / Google 变量留空也可以，登录页会隐藏对应按钮。
+1. **Sign up or sign in** (email and password; GitHub or Google if enabled on the instance).
+2. **Open Settings** and add RSS feed URLs. Enable the sources you want in today’s run (up to 10 active feeds).
+3. **Add at least one model profile** in Settings—provider, base URL, model name, and API key—and mark one as default.
+4. **Go to Daily briefing** (`/`). Confirm the default model and enabled feeds, then click **Generate today’s briefing**.
+5. **Review the Markdown preview** on the right. When it looks good, **Save** to store it under your account.
+6. **Browse History** (`/briefings`) to filter by date and open past briefings.
 
-```bash
-pnpm db:migrate
-pnpm dev
-```
+### What generation does
 
-打开 [http://localhost:3000](http://localhost:3000)。
+- Pulls recent items from your **enabled** feeds (typically the last 24 hours, with sensible fallbacks when dates are missing).
+- Sends that material to your **default model** and returns a structured Chinese Markdown digest grouped by source, with links back to originals.
+- If a single feed fails, others still run; the app surfaces errors so you can fix URLs or retry.
 
-## 最小使用路径
+### Tips
 
-1. 注册或登录
-2. 个人中心添加 RSS 源，并配置至少一个大模型档案（设为默认）
-3. 今日简讯页点击「生成今日简讯」，预览 Markdown
-4. 保存后可在历史简讯按日期筛选
-
-## OAuth 回调
-
-在对应控制台配置：
-
-- GitHub：`{BETTER_AUTH_URL}/api/auth/callback/github`
-- Google：`{BETTER_AUTH_URL}/api/auth/callback/google`
-
-## 常用脚本
-
-| 命令 | 说明 |
-| --- | --- |
-| `pnpm dev` | 本地开发 |
-| `pnpm build` / `pnpm start` | 生产构建与启动 |
-| `pnpm lint` | ESLint |
-| `pnpm db:generate` | 根据 schema 生成 SQL |
-| `pnpm db:migrate` | 执行迁移（直连） |
-| `pnpm db:studio` | Drizzle Studio |
-
-## 文档
-
-- [功能设计](docs/feature-design.md)
-- [网站风格设计指南](docs/design-guidelines.md)
-- [Agent 约定](AGENTS.md)
+- Start with a few trusted feeds before adding more.
+- Use **Preview first, save second** so you do not clutter history with drafts.
+- Keep one default model profile to avoid surprises on the daily page.
